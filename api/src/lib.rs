@@ -30,11 +30,11 @@
 //!     .await?;
 //!
 //! // Create an account instance
-//! let signer = Signer::new(Signer::from_seed_phrase(bob_seed_phrase, None)?)?;
+//! let signer = Signer::from_seed_phrase(bob_seed_phrase, None)?;
 //! let alice_secret_key = generate_secret_key()?;
 //! Account::create_account(AccountId::from_str("alice.testnet")?)
 //!     .fund_myself(bob.clone(), NearToken::from_near(1))
-//!     .public_key(alice_secret_key.public_key())?
+//!     .with_public_key(alice_secret_key.public_key())
 //!     .with_signer(signer)
 //!     .send_to_testnet()
 //!     .await?;
@@ -74,13 +74,13 @@ pub use crate::{
     contract::Contract,
     signer::{Signer, SignerTrait},
     stake::{Delegation, Staking},
-    storage::StorageDeposit,
+    storage::{StorageDeposit, StorageDepositBuilder, StorageUnregisterBuilder},
     tokens::Tokens,
     transactions::Transaction,
     types::{
+        tokens::{FTBalance, USDT_BALANCE, W_NEAR_BALANCE},
         AccountId, CryptoHash, Data, EpochReference, NearGas, NearToken, PublicKey, Reference,
         SecretKey,
-        tokens::{FTBalance, USDT_BALANCE, W_NEAR_BALANCE},
     },
 };
 

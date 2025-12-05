@@ -1,16 +1,15 @@
 use std::collections::BTreeMap;
 
 use near_api_types::{
-    AccountId, Data, EpochReference, NearGas, NearToken, Reference,
     stake::{RewardFeeFraction, StakingPoolInfo, UserStakeBalance},
+    AccountId, Data, EpochReference, NearGas, NearToken, Reference,
 };
-use near_openapi_client::types::{RpcError, RpcQueryResponse};
+use near_openapi_client::types::{RpcQueryError, RpcQueryResponse};
 
 use crate::{
-    NetworkConfig,
     advanced::{
-        ResponseHandler, RpcBuilder, query_request::QueryRequest, query_rpc::SimpleQueryRpc,
-        validator_rpc::SimpleValidatorRpc,
+        query_request::QueryRequest, query_rpc::SimpleQueryRpc, validator_rpc::SimpleValidatorRpc,
+        ResponseHandler, RpcBuilder,
     },
     common::{
         query::{
@@ -21,11 +20,10 @@ use crate::{
     },
     config::RetryResponse,
     contract::Contract,
-    errors::{BuilderError, QueryCreationError, QueryError, SendRequestError},
+    errors::{QueryCreationError, QueryError, SendRequestError},
     transactions::ConstructTransaction,
+    NetworkConfig,
 };
-
-type Result<T> = core::result::Result<T, BuilderError>;
 
 /// A wrapper struct that simplifies interactions with the [Staking Pool](https://github.com/near/core-contracts/tree/master/staking-pool) standard on behalf of the account.
 ///
@@ -35,6 +33,41 @@ type Result<T> = core::result::Result<T, BuilderError>;
 pub struct Delegation(pub AccountId);
 
 impl Delegation {
+    /// Returns the underlying account ID for this delegation.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    ///
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let delegation = Staking::delegation("alice.testnet".parse()?);
+    /// let account_id = delegation.account_id();
+    /// println!("Account ID: {}", account_id);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn account_id(&self) -> &AccountId {
+        &self.0
+    }
+
+    /// Converts this delegation to an Account for account-related operations.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let delegation = Staking::delegation("alice.testnet".parse()?);
+    /// let account = delegation.as_account();
+    /// let account_info = account.view().fetch_from_testnet().await?;
+    /// println!("Account balance: {}", account_info.data.amount);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn as_account(&self) -> crate::account::Account {
+        crate::account::Account(self.0.clone())
+    }
+
     /// Prepares a new contract query (`get_account_staked_balance`) for fetching the staked balance ([NearToken]) of the account on the staking pool.
     ///
     /// The call depends that the contract implements [`StakingPool`](https://github.com/near/core-contracts/tree/master/staking-pool)
@@ -45,7 +78,7 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let balance = Staking::delegation("alice.testnet".parse()?)
-    ///     .view_staked_balance("pool.testnet".parse()?)?
+    ///     .view_staked_balance("pool.testnet".parse()?)
     ///     .fetch_from_testnet()
     ///     .await?;
     /// println!("Staked balance: {:?}", balance);
@@ -55,16 +88,16 @@ impl Delegation {
     pub fn view_staked_balance(
         &self,
         pool: AccountId,
-    ) -> Result<RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>>> {
-        Ok(Contract(pool)
+    ) -> RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>> {
+        Contract(pool)
             .call_function(
                 "get_account_staked_balance",
                 serde_json::json!({
                     "account_id": self.0.clone(),
                 }),
-            )?
+            )
             .read_only()
-            .map(near_data_to_near_token))
+            .map(near_data_to_near_token)
     }
 
     /// Prepares a new contract query (`get_account_unstaked_balance`) for fetching the unstaked(free, not used for staking) balance ([NearToken]) of the account on the staking pool.
@@ -77,7 +110,7 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let balance = Staking::delegation("alice.testnet".parse()?)
-    ///     .view_unstaked_balance("pool.testnet".parse()?)?
+    ///     .view_unstaked_balance("pool.testnet".parse()?)
     ///     .fetch_from_testnet()
     ///     .await?;
     /// println!("Unstaked balance: {:?}", balance);
@@ -87,16 +120,16 @@ impl Delegation {
     pub fn view_unstaked_balance(
         &self,
         pool: AccountId,
-    ) -> Result<RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>>> {
-        Ok(Contract(pool)
+    ) -> RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>> {
+        Contract(pool)
             .call_function(
                 "get_account_unstaked_balance",
                 serde_json::json!({
                     "account_id": self.0.clone(),
                 }),
-            )?
+            )
             .read_only()
-            .map(near_data_to_near_token))
+            .map(near_data_to_near_token)
     }
 
     /// Prepares a new contract query (`get_account_total_balance`) for fetching the total balance ([NearToken]) of the account (free + staked) on the staking pool.
@@ -109,7 +142,7 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let balance = Staking::delegation("alice.testnet".parse()?)
-    ///     .view_total_balance("pool.testnet".parse()?)?
+    ///     .view_total_balance("pool.testnet".parse()?)
     ///     .fetch_from_testnet()
     ///     .await?;
     /// println!("Total balance: {:?}", balance);
@@ -119,16 +152,16 @@ impl Delegation {
     pub fn view_total_balance(
         &self,
         pool: AccountId,
-    ) -> Result<RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>>> {
-        Ok(Contract(pool)
+    ) -> RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>> {
+        Contract(pool)
             .call_function(
                 "get_account_total_balance",
                 serde_json::json!({
                     "account_id": self.0.clone(),
                 }),
-            )?
+            )
             .read_only()
-            .map(near_data_to_near_token))
+            .map(near_data_to_near_token)
     }
 
     /// Returns a full information about the staked balance ([UserStakeBalance]) of the account on the staking pool.
@@ -142,7 +175,7 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let balance = Staking::delegation("alice.testnet".parse()?)
-    ///     .view_balance("pool.testnet".parse()?)?
+    ///     .view_balance("pool.testnet".parse()?)
     ///     .fetch_from_testnet()
     ///     .await?;
     /// println!("Balance: {:?}", balance);
@@ -153,24 +186,22 @@ impl Delegation {
     pub fn view_balance(
         &self,
         pool: AccountId,
-    ) -> Result<
-        MultiRequestBuilder<
-            PostprocessHandler<
-                UserStakeBalance,
-                MultiQueryHandler<(
-                    CallResultHandler<NearToken>,
-                    CallResultHandler<NearToken>,
-                    CallResultHandler<NearToken>,
-                )>,
-            >,
+    ) -> MultiRequestBuilder<
+        PostprocessHandler<
+            UserStakeBalance,
+            MultiQueryHandler<(
+                CallResultHandler<NearToken>,
+                CallResultHandler<NearToken>,
+                CallResultHandler<NearToken>,
+            )>,
         >,
     > {
         let postprocess = MultiQueryHandler::default();
 
-        let multiquery = MultiRequestBuilder::new(postprocess, Reference::Optimistic)
-            .add_query_builder(self.view_staked_balance(pool.clone())?)
-            .add_query_builder(self.view_unstaked_balance(pool.clone())?)
-            .add_query_builder(self.view_total_balance(pool)?)
+        MultiRequestBuilder::new(postprocess, Reference::Optimistic)
+            .add_query_builder(self.view_staked_balance(pool.clone()))
+            .add_query_builder(self.view_unstaked_balance(pool.clone()))
+            .add_query_builder(self.view_total_balance(pool))
             .map(
                 |(staked, unstaked, total): (Data<NearToken>, Data<NearToken>, Data<NearToken>)| {
                     UserStakeBalance {
@@ -179,8 +210,7 @@ impl Delegation {
                         total: total.data,
                     }
                 },
-            );
-        Ok(multiquery)
+            )
     }
 
     /// Prepares a new contract query (`is_account_unstaked_balance_available`) for checking if the unstaked balance of the account is available for withdrawal.
@@ -195,7 +225,7 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let is_available = Staking::delegation("alice.testnet".parse()?)
-    ///     .is_account_unstaked_balance_available_for_withdrawal("pool.testnet".parse()?)?
+    ///     .is_account_unstaked_balance_available_for_withdrawal("pool.testnet".parse()?)
     ///     .fetch_from_testnet()
     ///     .await?;
     /// println!("Is available: {:?}", is_available);
@@ -205,15 +235,15 @@ impl Delegation {
     pub fn is_account_unstaked_balance_available_for_withdrawal(
         &self,
         pool: AccountId,
-    ) -> Result<RequestBuilder<CallResultHandler<bool>>> {
-        Ok(Contract(pool)
+    ) -> RequestBuilder<CallResultHandler<bool>> {
+        Contract(pool)
             .call_function(
                 "is_account_unstaked_balance_available",
                 serde_json::json!({
                     "account_id": self.0.clone(),
                 }),
-            )?
-            .read_only())
+            )
+            .read_only()
     }
 
     /// Prepares a new transaction contract call (`deposit`) for depositing funds into the staking pool.
@@ -229,20 +259,20 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .deposit("pool.testnet".parse()?, NearToken::from_near(1))?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .deposit("pool.testnet".parse()?, NearToken::from_near(1))
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn deposit(&self, pool: AccountId, amount: NearToken) -> Result<ConstructTransaction> {
-        Ok(Contract(pool)
-            .call_function("deposit", ())?
+    pub fn deposit(&self, pool: AccountId, amount: NearToken) -> ConstructTransaction {
+        Contract(pool)
+            .call_function("deposit", ())
             .transaction()
             .gas(NearGas::from_tgas(50))
             .deposit(amount)
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`deposit_and_stake`) for depositing funds into the staking pool and staking them.
@@ -260,24 +290,20 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .deposit_and_stake("pool.testnet".parse()?, NearToken::from_near(1))?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .deposit_and_stake("pool.testnet".parse()?, NearToken::from_near(1))
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn deposit_and_stake(
-        &self,
-        pool: AccountId,
-        amount: NearToken,
-    ) -> Result<ConstructTransaction> {
-        Ok(Contract(pool)
-            .call_function("deposit_and_stake", ())?
+    pub fn deposit_and_stake(&self, pool: AccountId, amount: NearToken) -> ConstructTransaction {
+        Contract(pool)
+            .call_function("deposit_and_stake", ())
             .transaction()
             .gas(NearGas::from_tgas(50))
             .deposit(amount)
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`stake`) for staking funds into the staking pool.
@@ -296,23 +322,23 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .stake("pool.testnet".parse()?, NearToken::from_near(1))?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .stake("pool.testnet".parse()?, NearToken::from_near(1))
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn stake(&self, pool: AccountId, amount: NearToken) -> Result<ConstructTransaction> {
+    pub fn stake(&self, pool: AccountId, amount: NearToken) -> ConstructTransaction {
         let args = serde_json::json!({
-            "amount": amount.as_yoctonear(),
+            "amount": amount,
         });
 
-        Ok(Contract(pool)
-            .call_function("stake", args)?
+        Contract(pool)
+            .call_function("stake", args)
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`stake_all`) for staking all available unstaked balance into the staking pool.
@@ -329,19 +355,19 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// Staking::delegation("alice.testnet".parse()?)
-    ///     .stake_all("pool.testnet".parse()?)?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .stake_all("pool.testnet".parse()?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn stake_all(&self, pool: AccountId) -> Result<ConstructTransaction> {
-        Ok(Contract(pool)
-            .call_function("stake_all", ())?
+    pub fn stake_all(&self, pool: AccountId) -> ConstructTransaction {
+        Contract(pool)
+            .call_function("stake_all", ())
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`unstake`) for unstaking funds and returning them to your unstaked balance.
@@ -356,23 +382,23 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .unstake("pool.testnet".parse()?, NearToken::from_near(1))?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .unstake("pool.testnet".parse()?, NearToken::from_near(1))
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn unstake(&self, pool: AccountId, amount: NearToken) -> Result<ConstructTransaction> {
+    pub fn unstake(&self, pool: AccountId, amount: NearToken) -> ConstructTransaction {
         let args = serde_json::json!({
-            "amount": amount.as_yoctonear(),
+            "amount": amount,
         });
 
-        Ok(Contract(pool)
-            .call_function("unstake", args)?
+        Contract(pool)
+            .call_function("unstake", args)
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`unstake_all`) for unstaking all available staked balance and returning them to your unstaked balance.
@@ -387,19 +413,19 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .unstake_all("pool.testnet".parse()?)?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .unstake_all("pool.testnet".parse()?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn unstake_all(&self, pool: AccountId) -> Result<ConstructTransaction> {
-        Ok(Contract(pool)
-            .call_function("unstake_all", ())?
+    pub fn unstake_all(&self, pool: AccountId) -> ConstructTransaction {
+        Contract(pool)
+            .call_function("unstake_all", ())
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`withdraw`) for withdrawing funds from the staking pool into your account.
@@ -414,23 +440,23 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .withdraw("pool.testnet".parse()?, NearToken::from_near(1))?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .withdraw("pool.testnet".parse()?, NearToken::from_near(1))
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn withdraw(&self, pool: AccountId, amount: NearToken) -> Result<ConstructTransaction> {
+    pub fn withdraw(&self, pool: AccountId, amount: NearToken) -> ConstructTransaction {
         let args = serde_json::json!({
-            "amount": amount.as_yoctonear(),
+            "amount": amount,
         });
 
-        Ok(Contract(pool)
-            .call_function("withdraw", args)?
+        Contract(pool)
+            .call_function("withdraw", args)
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 
     /// Prepares a new transaction contract call (`withdraw_all`) for withdrawing all available staked balance from the staking pool into your account.
@@ -445,19 +471,19 @@ impl Delegation {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Staking::delegation("alice.testnet".parse()?)
-    ///     .withdraw_all("pool.testnet".parse()?)?
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .withdraw_all("pool.testnet".parse()?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn withdraw_all(&self, pool: AccountId) -> Result<ConstructTransaction> {
-        Ok(Contract(pool)
-            .call_function("withdraw_all", ())?
+    pub fn withdraw_all(&self, pool: AccountId) -> ConstructTransaction {
+        Contract(pool)
+            .call_function("withdraw_all", ())
             .transaction()
             .gas(NearGas::from_tgas(50))
-            .with_signer_account(self.0.clone()))
+            .with_signer_account(self.0.clone())
     }
 }
 
@@ -535,8 +561,9 @@ impl Staking {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn validators_stake()
-    -> RequestBuilder<PostprocessHandler<BTreeMap<AccountId, NearToken>, RpcValidatorHandler>> {
+    pub fn validators_stake(
+    ) -> RequestBuilder<PostprocessHandler<BTreeMap<AccountId, NearToken>, RpcValidatorHandler>>
+    {
         RequestBuilder::new(
             SimpleValidatorRpc,
             EpochReference::Latest,
@@ -589,7 +616,6 @@ impl Staking {
     ) -> RequestBuilder<CallResultHandler<RewardFeeFraction>> {
         Contract(pool)
             .call_function("get_reward_fee_fraction", ())
-            .expect("arguments are not expected")
             .read_only()
     }
 
@@ -612,7 +638,6 @@ impl Staking {
     pub fn staking_pool_delegators(pool: AccountId) -> RequestBuilder<CallResultHandler<u64>> {
         Contract(pool)
             .call_function("get_number_of_accounts", ())
-            .expect("arguments are not expected")
             .read_only()
     }
 
@@ -637,7 +662,6 @@ impl Staking {
     ) -> RequestBuilder<PostprocessHandler<NearToken, CallResultHandler<u128>>> {
         Contract(pool)
             .call_function("get_total_staked_balance", ())
-            .expect("arguments are not expected")
             .read_only()
             .map(near_data_to_near_token)
     }
@@ -716,9 +740,9 @@ impl RpcType for ActiveStakingPoolQuery {
         client: &near_openapi_client::Client,
         network: &NetworkConfig,
         reference: &Reference,
-    ) -> RetryResponse<RpcQueryResponse, SendRequestError<RpcError>> {
+    ) -> RetryResponse<RpcQueryResponse, SendRequestError<RpcQueryError>> {
         let Some(account_id) = network.staking_pools_factory_account_id.clone() else {
-            return RetryResponse::Critical(SendRequestError::QueryCreationError(
+            return RetryResponse::Critical(SendRequestError::RequestCreationError(
                 QueryCreationError::StakingPoolFactoryNotDefined,
             ));
         };
@@ -746,7 +770,7 @@ impl ResponseHandler for ActiveStakingHandler {
     fn process_response(
         &self,
         response: Vec<RpcQueryResponse>,
-    ) -> core::result::Result<Self::Response, QueryError<RpcError>> {
+    ) -> core::result::Result<Self::Response, QueryError<RpcQueryError>> {
         let query_result = ViewStateHandler {}.process_response(response)?;
 
         Ok(query_result

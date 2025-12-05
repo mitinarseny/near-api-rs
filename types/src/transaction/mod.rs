@@ -1,15 +1,15 @@
-use std::{cell::OnceCell, io::Write, str::FromStr};
+use std::{io::Write, str::FromStr, sync::OnceLock};
 
 pub mod actions;
 pub mod delegate_action;
 pub mod result;
 
-use base64::{Engine, prelude::BASE64_STANDARD};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AccountId, Action, CryptoHash, Nonce, PublicKey, Signature, errors::DataConversionError,
+    errors::DataConversionError, AccountId, Action, CryptoHash, Nonce, PublicKey, Signature,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -61,10 +61,10 @@ impl Transaction {
         }
     }
 
-    pub const fn public_key(&self) -> &PublicKey {
+    pub const fn public_key(&self) -> PublicKey {
         match self {
-            Self::V0(tx) => &tx.public_key,
-            Self::V1(tx) => &tx.public_key,
+            Self::V0(tx) => tx.public_key,
+            Self::V1(tx) => tx.public_key,
         }
     }
 
@@ -91,7 +91,8 @@ impl Transaction {
     }
 
     pub fn get_hash(&self) -> CryptoHash {
-        let bytes = borsh::to_vec(&self).expect("Failed to deserialize");
+        #[allow(clippy::expect_used)]
+        let bytes = borsh::to_vec(&self).expect("Failed to serialize");
         CryptoHash::hash(&bytes)
     }
 }
@@ -115,7 +116,7 @@ pub struct SignedTransaction {
     pub signature: Signature,
     #[borsh(skip)]
     #[serde(skip)]
-    hash: OnceCell<CryptoHash>,
+    hash: OnceLock<CryptoHash>,
 }
 
 impl TryFrom<near_openapi_types::SignedTransactionView> for SignedTransaction {
@@ -165,18 +166,19 @@ impl TryFrom<near_openapi_types::SignedTransactionView> for SignedTransaction {
 }
 
 impl From<SignedTransaction> for near_openapi_types::SignedTransaction {
-    fn from(tr: SignedTransaction) -> Self {
-        let bytes = borsh::to_vec(&tr).expect("Failed to serialize");
+    fn from(transaction: SignedTransaction) -> Self {
+        #[allow(clippy::expect_used)]
+        let bytes = borsh::to_vec(&transaction).expect("Failed to serialize");
         Self(BASE64_STANDARD.encode(bytes))
     }
 }
 
 impl From<SignedTransaction> for PrepopulateTransaction {
-    fn from(mut tr: SignedTransaction) -> Self {
+    fn from(mut transaction: SignedTransaction) -> Self {
         Self {
-            signer_id: tr.transaction.signer_id().clone(),
-            receiver_id: tr.transaction.receiver_id().clone(),
-            actions: tr.transaction.take_actions(),
+            signer_id: transaction.transaction.signer_id().clone(),
+            receiver_id: transaction.transaction.receiver_id().clone(),
+            actions: transaction.transaction.take_actions(),
         }
     }
 }
@@ -186,7 +188,7 @@ impl SignedTransaction {
         Self {
             signature,
             transaction,
-            hash: OnceCell::new(),
+            hash: OnceLock::new(),
         }
     }
 

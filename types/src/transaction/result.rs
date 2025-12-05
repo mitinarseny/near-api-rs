@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use borsh;
 use near_openapi_types::{
     CallResult, ExecutionStatusView, FinalExecutionOutcomeView, FinalExecutionStatus,
@@ -10,9 +10,9 @@ use near_openapi_types::{
 };
 
 use crate::{
-    AccountId, CryptoHash, NearGas, NearToken, Signature,
     errors::{DataConversionError, ExecutionError},
     transaction::{SignedTransaction, Transaction},
+    AccountId, CryptoHash, NearGas, NearToken, Signature,
 };
 
 /// Execution related info as a result of performing a successful transaction
@@ -40,6 +40,7 @@ pub struct Execution<T> {
 
 impl<T> Execution<T> {
     pub fn assert_success(self) -> T {
+        #[allow(clippy::unwrap_used)]
         self.into_result().unwrap()
     }
 
@@ -159,6 +160,16 @@ impl<T: fmt::Debug> fmt::Debug for ExecutionResult<T> {
     }
 }
 
+impl fmt::Display for ExecutionResult<TxExecutionError> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ExecutionFailure: {:?}", self.value)
+    }
+}
+
+// Might be a good idea to consider wrapping this into thiserror as we do for other errors in the project
+// Though, to not introduce breaking change we will just mark it as error for now
+impl std::error::Error for ExecutionResult<TxExecutionError> {}
+
 /// Execution related info found after performing a transaction. Can be converted
 /// into [`ExecutionSuccess`] or [`ExecutionFailure`] through [`into_result`](ExecutionFinalResult::into_result)
 #[derive(Clone)]
@@ -241,7 +252,13 @@ impl ExecutionFinalResult {
     /// Because this function may panic, its use is generally discouraged. Instead, prefer
     /// to call into [`into_result`](ExecutionFinalResult::into_result) then pattern matching and handle the Err case explicitly.
     pub fn assert_success(self) -> ExecutionSuccess {
+        #[allow(clippy::unwrap_used)]
         self.into_result().unwrap()
+    }
+
+    pub fn assert_failure(self) -> ExecutionResult<TxExecutionError> {
+        #[allow(clippy::unwrap_used)]
+        self.into_result().unwrap_err()
     }
 
     /// Deserialize an instance of type `T` from bytes of JSON text sourced from the

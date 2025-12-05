@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
 use near_api_types::errors::DataConversionError;
-use near_openapi_client::types::RpcError;
+use near_openapi_client::types::{
+    FunctionCallError, InternalError, RpcQueryError, RpcRequestValidationErrorKind,
+    RpcTransactionError,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum QueryCreationError {
@@ -23,6 +28,8 @@ pub enum QueryError<RpcError: std::fmt::Debug + Send + Sync> {
     QueryError(Box<RetryError<SendRequestError<RpcError>>>),
     #[error("Internal error: failed to get response. Please submit a bug ticket")]
     InternalErrorNoResponse,
+    #[error("Argument serialization error: {0}")]
+    ArgumentValidationError(#[from] ArgumentValidationError),
     #[error("Failed to convert response: {0}")]
     ConversionError(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -45,13 +52,22 @@ pub enum MetaSignError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum SignerError {
+pub enum PublicKeyError {
     #[error("Public key is not available")]
     PublicKeyIsNotAvailable,
+    #[cfg(feature = "ledger")]
+    #[error("Failed to cache public key: {0}")]
+    SetPublicKeyError(#[from] tokio::sync::SetError<crate::PublicKey>),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SignerError {
+    #[error(transparent)]
+    PublicKeyError(#[from] PublicKeyError),
     #[error("Secret key is not available")]
     SecretKeyIsNotAvailable,
     #[error("Failed to fetch nonce: {0:?}")]
-    FetchNonceError(Box<QueryError<RpcError>>),
+    FetchNonceError(Box<QueryError<RpcQueryError>>),
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
 
@@ -66,6 +82,8 @@ pub enum SecretError {
     BIP39Error(#[from] bip39::Error),
     #[error("Failed to derive key from seed phrase: Invalid Index")]
     DeriveKeyInvalidIndex,
+    #[error(transparent)]
+    PublicKeyError(#[from] PublicKeyError),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -78,6 +96,8 @@ pub enum AccessKeyFileError {
     SecretError(#[from] SecretError),
     #[error("Public key is not linked to the private key")]
     PrivatePublicKeyMismatch,
+    #[error(transparent)]
+    PublicKeyError(#[from] PublicKeyError),
 }
 
 #[cfg(feature = "keystore")]
@@ -86,7 +106,7 @@ pub enum KeyStoreError {
     #[error(transparent)]
     Keystore(#[from] keyring::Error),
     #[error("Failed to query account keys: {0:?}")]
-    QueryError(QueryError<RpcError>),
+    QueryError(QueryError<RpcQueryError>),
     #[error("Failed to parse access key file: {0}")]
     ParseError(#[from] serde_json::Error),
     #[error(transparent)]
@@ -113,8 +133,6 @@ The status is tracked in `About` section."
     TaskExecutionError(#[from] tokio::task::JoinError),
     #[error("Signature is not expected to fail on deserialization: {0}")]
     SignatureDeserializationError(String),
-    #[error("Failed to cache public key: {0}")]
-    SetPublicKeyError(#[from] tokio::sync::SetError<crate::PublicKey>),
 }
 
 #[cfg(feature = "ledger")]
@@ -133,32 +151,38 @@ impl From<near_ledger::NEARLedgerError> for LedgerError {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum SecretBuilderError<E: std::fmt::Debug> {
-    #[error("Public key is not available")]
-    PublicKeyIsNotAvailable,
-    #[error(transparent)]
-    SecretError(#[from] SecretError),
-    #[error(transparent)]
-    IO(#[from] std::io::Error),
-    #[error(transparent)]
-    CallbackError(E),
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum ArgumentValidationError {
+    #[error("Failed to serialize arguments as JSON: {0}")]
+    JsonSerializationError(Arc<serde_json::Error>),
+    #[error("Failed to serialize arguments as Borsh: {0}")]
+    BorshSerializationError(Arc<std::io::Error>),
+    #[error("Account creation error: {0}")]
+    AccountCreationError(#[from] AccountCreationError),
+    #[error("Multiple errors: {0:?}")]
+    MultipleErrors(Vec<ArgumentValidationError>),
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum BuilderError {
-    #[error("Incorrect arguments: {0}")]
-    IncorrectArguments(#[from] serde_json::Error),
+impl ArgumentValidationError {
+    pub const fn multiple(errors: Vec<Self>) -> Self {
+        Self::MultipleErrors(errors)
+    }
 }
 
-#[derive(thiserror::Error, Debug)]
+impl From<serde_json::Error> for ArgumentValidationError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::JsonSerializationError(Arc::new(err))
+    }
+}
+
+impl From<std::io::Error> for ArgumentValidationError {
+    fn from(err: std::io::Error) -> Self {
+        Self::BorshSerializationError(Arc::new(err))
+    }
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum AccountCreationError {
-    #[error(transparent)]
-    BuilderError(#[from] BuilderError),
-
-    #[error(transparent)]
-    PublicKeyParsingError(#[from] PublicKeyParsingError),
-
     #[error("Top-level account is not allowed")]
     TopLevelAccountIsNotAllowed,
 
@@ -192,54 +216,50 @@ pub enum RetryError<E> {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum SendRequestError<E: std::fmt::Debug> {
-    #[error("Client error: {0}")]
-    ClientError(near_openapi_client::Error<()>),
-    #[error("Server returned an error: {0}")]
-    ServerError(E),
-    #[error("Query creation error: {0}")]
-    QueryCreationError(#[from] QueryCreationError),
-}
-
-#[derive(thiserror::Error, Debug)]
 pub enum ExecuteTransactionError {
+    #[error(transparent)]
+    ArgumentValidationError(#[from] ArgumentValidationError),
+
+    #[error("Pre-query error: {0:?}")]
+    PreQueryError(QueryError<RpcQueryError>),
     #[error("Transaction validation error: {0}")]
     ValidationError(#[from] ValidationError),
-    #[error("Transaction signing error: {0}")]
-    SignerError(#[from] SignerError),
     #[error("Meta-signing error: {0}")]
     MetaSignError(#[from] MetaSignError),
-    #[error("Pre-query error: {0:?}")]
-    PreQueryError(QueryError<RpcError>),
+    #[error("Transaction signing error: {0}")]
+    SignerError(#[from] SignerError),
+
     #[error("Transaction error: {0:?}")]
-    TransactionError(RetryError<SendRequestError<RpcError>>),
-    #[error(transparent)]
-    NonEmptyVecError(#[from] NonEmptyVecError),
+    TransactionError(RetryError<SendRequestError<RpcTransactionError>>),
     #[error("Data conversion error: {0}")]
     DataConversionError(#[from] DataConversionError),
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum ExecuteMetaTransactionsError {
+    #[error(transparent)]
+    ArgumentValidationError(#[from] ArgumentValidationError),
+
+    #[error("Pre-query error: {0:?}")]
+    PreQueryError(QueryError<RpcQueryError>),
     #[error("Transaction validation error: {0}")]
     ValidationError(#[from] ValidationError),
-    #[error("Meta-signing error: {0}")]
-    SignError(#[from] MetaSignError),
-    #[error("Pre-query error: {0:?}")]
-    PreQueryError(QueryError<RpcError>),
-
     #[error("Relayer is not defined in the network config")]
     RelayerIsNotDefined,
 
+    #[error("Meta-signing error: {0}")]
+    SignError(#[from] MetaSignError),
+
     #[error("Failed to send meta-transaction: {0}")]
     SendError(#[from] reqwest::Error),
-
-    #[error(transparent)]
-    NonEmptyVecError(#[from] NonEmptyVecError),
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum FTValidatorError {
+    #[deprecated(
+        since = "0.7.3",
+        note = "this error is unused as we are not falling if no metadata provided"
+    )]
     #[error("Metadata is not provided")]
     NoMetadata,
     #[error("Decimals mismatch: expected {expected}, got {got}")]
@@ -248,24 +268,14 @@ pub enum FTValidatorError {
     StorageDepositNeeded,
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum FastNearError {
-    #[error("FastNear URL is not defined in the network config")]
-    FastNearUrlIsNotDefined,
-    #[error("Failed to send request: {0}")]
-    SendError(#[from] reqwest::Error),
-    #[error("Url parsing error: {0}")]
-    UrlParseError(#[from] url::ParseError),
-}
-
 //TODO: it's better to have a separate errors, but for now it would be aggregated here
 #[derive(thiserror::Error, Debug)]
 pub enum ValidationError {
     #[error("Query error: {0:?}")]
-    QueryError(QueryError<RpcError>),
+    QueryError(QueryError<RpcQueryError>),
 
-    #[error("Query creation error: {0}")]
-    RequestBuilderError(#[from] BuilderError),
+    #[error(transparent)]
+    ArgumentValidationError(#[from] ArgumentValidationError),
 
     #[error("FT Validation Error: {0}")]
     FTValidatorError(#[from] FTValidatorError),
@@ -275,40 +285,47 @@ pub enum ValidationError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum MultiTransactionError {
-    #[error(transparent)]
-    NonEmptyVecError(#[from] NonEmptyVecError),
-
-    #[error(transparent)]
-    SignerError(#[from] SignerError),
-    #[error("Duplicate signer")]
-    DuplicateSigner,
-
-    #[error(transparent)]
-    SignedTransactionError(#[from] ExecuteTransactionError),
-
-    #[error("Failed to send meta-transaction: {0}")]
-    MetaTransactionError(#[from] ExecuteMetaTransactionsError),
+pub enum SendRequestError<RpcError: std::fmt::Debug + Send + Sync> {
+    #[error("Query creation error: {0}")]
+    RequestCreationError(#[from] QueryCreationError),
+    #[error("Transport error: {0}")]
+    TransportError(near_openapi_client::Error<()>),
+    // This is a hack to support the old error handling in the RPC API.
+    #[error("Wasm execution failed with error: {0}")]
+    WasmExecutionError(#[from] FunctionCallError),
+    #[error("Internal error: {0:?}")]
+    InternalError(#[from] InternalError),
+    #[error("Request validation error: {0:?}")]
+    RequestValidationError(#[from] RpcRequestValidationErrorKind),
+    #[error("Server error: {0}")]
+    ServerError(RpcError),
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum NonEmptyVecError {
-    #[error("Vector is empty")]
-    EmptyVector,
-}
+// That's a BIG BIG HACK to handle inconsistent RPC errors
+//
+// Node responds as a message instead of an error object, so we need to parse the message and return the error.
+// https://github.com/near/nearcore/blob/ae6fd841eaad76a090a02e9dcf7406bc79b81dbb/chain/jsonrpc/src/lib.rs#L204
+//
+// TODO: remove this once we have a proper error handling in the RPC API.
+// - https://github.com/near/near-sdk-rs/pull/1165
+// - nearcore PR
+impl<RpcError: std::fmt::Debug + Send + Sync> From<near_openapi_client::Error<()>>
+    for SendRequestError<RpcError>
+{
+    fn from(err: near_openapi_client::Error<()>) -> Self {
+        if let near_openapi_client::Error::InvalidResponsePayload(bytes, _error) = &err {
+            let error = serde_json::from_slice::<serde_json::Value>(bytes)
+                .unwrap_or_default()
+                .get("result")
+                .and_then(|result| result.get("error"))
+                .and_then(|message| message.as_str())
+                .and_then(|message| message.strip_prefix("wasm execution failed with error: "))
+                .and_then(|message| serde_dbgfmt::from_str::<FunctionCallError>(message).ok());
+            if let Some(error) = error {
+                return Self::WasmExecutionError(error);
+            }
+        }
 
-#[derive(thiserror::Error, Debug)]
-pub enum PublicKeyParsingError {
-    #[error("Invalid prefix: {0}")]
-    InvalidPrefix(String),
-    #[error("Base64 decoding error: {0}")]
-    Base64DecodeError(#[from] base64::DecodeError),
-    #[error("Invalid Key Length")]
-    InvalidKeyLength,
-}
-
-impl From<Vec<u8>> for PublicKeyParsingError {
-    fn from(_: Vec<u8>) -> Self {
-        Self::InvalidKeyLength
+        Self::TransportError(err)
     }
 }

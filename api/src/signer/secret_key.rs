@@ -2,7 +2,7 @@ use tracing::{instrument, trace};
 
 use near_api_types::{AccountId, PublicKey, SecretKey};
 
-use crate::errors::SignerError;
+use crate::errors::{PublicKeyError, SignerError};
 
 use super::SignerTrait;
 
@@ -20,15 +20,15 @@ impl SignerTrait for SecretKeySigner {
     async fn get_secret_key(
         &self,
         signer_id: &AccountId,
-        public_key: &PublicKey,
+        _public_key: PublicKey,
     ) -> Result<SecretKey, SignerError> {
         trace!(target: SECRET_KEY_SIGNER_TARGET, "returning with secret key");
         Ok(self.secret_key.clone())
     }
 
     #[instrument(skip(self))]
-    fn get_public_key(&self) -> Result<PublicKey, SignerError> {
-        Ok(self.public_key.clone())
+    fn get_public_key(&self) -> Result<PublicKey, PublicKeyError> {
+        Ok(self.public_key)
     }
 }
 

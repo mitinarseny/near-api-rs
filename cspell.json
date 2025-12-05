@@ -2,9 +2,14 @@
     "version": "0.2",
     "ignorePaths": [],
     "dictionaryDefinitions": [],
-    "dictionaries": [],
+    "dictionaries": [
+        "rust"
+    ],
     "words": [
+        "testresult",
+        "rustc",
         "libudev",
+        "dbgfmt",
         "libsystemd",
         "clippy",
         "RUSTDOCFLAGS",
@@ -15,6 +20,7 @@
         "prepopulate",
         "transactionable",
         "linkdrop",
+        "qbit",
         "tgas",
         "yoctonear",
         "devhub",
@@ -55,7 +61,9 @@
         "secp",
         "Secp",
         "SECP",
-        "chrono"
+        "chrono",
+        "testresult",
+        "btreemap"
     ],
     "ignoreRegExpList": [
         // Base58 encoded public key/secret key

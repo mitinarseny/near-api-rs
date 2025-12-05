@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use base64::{Engine, prelude::BASE64_STANDARD};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AccountId, Action, BlockHeight, Nonce, PublicKey, Signature, errors::DataConversionError,
+    errors::DataConversionError, AccountId, Action, BlockHeight, Nonce, PublicKey, Signature,
 };
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq)]
@@ -100,6 +100,17 @@ impl TryFrom<near_openapi_types::NonDelegateAction> for NonDelegateAction {
             ) => Ok(Self(Action::UseGlobalContract(Box::new(
                 use_global_contract_action.try_into()?,
             )))),
+            near_openapi_types::NonDelegateAction::AddGasKey(add_gas_key_action) => Ok(Self(
+                Action::AddGasKey(Box::new(add_gas_key_action.try_into()?)),
+            )),
+            near_openapi_types::NonDelegateAction::DeleteGasKey(delete_gas_key_action) => Ok(Self(
+                Action::DeleteGasKey(Box::new(delete_gas_key_action.try_into()?)),
+            )),
+            near_openapi_types::NonDelegateAction::TransferToGasKey(transfer_to_gas_key_action) => {
+                Ok(Self(Action::TransferToGasKey(Box::new(
+                    transfer_to_gas_key_action.try_into()?,
+                ))))
+            }
         }
     }
 }
@@ -144,6 +155,7 @@ impl std::str::FromStr for SignedDelegateActionAsBase64 {
 
 impl std::fmt::Display for SignedDelegateActionAsBase64 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::expect_used)]
         let base64_signed_delegate_action = BASE64_STANDARD.encode(
             borsh::to_vec(&self.inner)
                 .expect("Signed Delegate Action serialization to borsh is not expected to fail"),

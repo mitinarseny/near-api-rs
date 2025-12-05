@@ -1,16 +1,16 @@
 use near_api_types::{
-    AccountId, BlockHeight, CryptoHash, Nonce, PublicKey, SecretKey, Signature,
     crypto::KeyType,
     transaction::{
-        PrepopulateTransaction, SignedTransaction, Transaction, TransactionV0,
         delegate_action::{DelegateAction, NonDelegateAction, SignedDelegateAction},
+        PrepopulateTransaction, SignedTransaction, Transaction, TransactionV0,
     },
+    AccountId, BlockHeight, CryptoHash, Nonce, PublicKey, SecretKey, Signature,
 };
 use slipped10::BIP32Path;
 use tokio::sync::OnceCell;
 use tracing::{debug, info, instrument, warn};
 
-use crate::errors::{LedgerError, MetaSignError, SignerError};
+use crate::errors::{LedgerError, MetaSignError, PublicKeyError, SignerError};
 
 use super::{NEP413Payload, SignerTrait};
 
@@ -33,22 +33,22 @@ impl LedgerSigner {
 
 #[async_trait::async_trait]
 impl SignerTrait for LedgerSigner {
-    #[instrument(skip(self, tr), fields(signer_id = %tr.signer_id, receiver_id = %tr.receiver_id))]
+    #[instrument(skip(self, transaction), fields(signer_id = %transaction.signer_id, receiver_id = %transaction.receiver_id))]
     async fn sign(
         &self,
-        tr: PrepopulateTransaction,
+        transaction: PrepopulateTransaction,
         public_key: PublicKey,
         nonce: Nonce,
         block_hash: CryptoHash,
     ) -> Result<SignedTransaction, SignerError> {
         debug!(target: LEDGER_SIGNER_TARGET, "Preparing unsigned transaction");
         let unsigned_tx = Transaction::V0(TransactionV0 {
-            signer_id: tr.signer_id.clone(),
+            signer_id: transaction.signer_id.clone(),
             public_key,
-            receiver_id: tr.receiver_id,
+            receiver_id: transaction.receiver_id,
             nonce,
             block_hash,
-            actions: tr.actions,
+            actions: transaction.actions,
         });
         let unsigned_tx_bytes = borsh::to_vec(&unsigned_tx).map_err(LedgerError::from)?;
         let hd_path = self.hd_path.clone();
@@ -74,25 +74,25 @@ impl SignerTrait for LedgerSigner {
         Ok(SignedTransaction::new(signature, unsigned_tx))
     }
 
-    #[instrument(skip(self, tr), fields(signer_id = %tr.signer_id, receiver_id = %tr.receiver_id))]
+    #[instrument(skip(self, transaction), fields(signer_id = %transaction.signer_id, receiver_id = %transaction.receiver_id))]
     async fn sign_meta(
         &self,
-        tr: PrepopulateTransaction,
+        transaction: PrepopulateTransaction,
         public_key: PublicKey,
         nonce: Nonce,
         _block_hash: CryptoHash,
         max_block_height: BlockHeight,
     ) -> Result<SignedDelegateAction, MetaSignError> {
         debug!(target: LEDGER_SIGNER_TARGET, "Preparing delegate action");
-        let actions = tr
+        let actions = transaction
             .actions
             .into_iter()
             .map(NonDelegateAction::try_from)
             .collect::<Result<_, _>>()
             .map_err(|_| MetaSignError::DelegateActionIsNotSupported)?;
         let delegate_action = DelegateAction {
-            sender_id: tr.signer_id,
-            receiver_id: tr.receiver_id,
+            sender_id: transaction.signer_id,
+            receiver_id: transaction.receiver_id,
             actions,
             nonce,
             max_block_height,
@@ -137,11 +137,11 @@ impl SignerTrait for LedgerSigner {
         &self,
         _signer_id: AccountId,
         _public_key: PublicKey,
-        payload: NEP413Payload,
+        payload: &NEP413Payload,
     ) -> Result<Signature, SignerError> {
         info!(target: LEDGER_SIGNER_TARGET, "Signing NEP413 message with Ledger");
         let hd_path = self.hd_path.clone();
-        let payload = payload.into();
+        let payload = payload.to_owned().into();
 
         let signature: Vec<u8> = tokio::task::spawn_blocking(move || {
             let signature =
@@ -164,25 +164,23 @@ impl SignerTrait for LedgerSigner {
     async fn get_secret_key(
         &self,
         _signer_id: &AccountId,
-        _public_key: &PublicKey,
+        _public_key: PublicKey,
     ) -> Result<SecretKey, SignerError> {
         warn!(target: LEDGER_SIGNER_TARGET, "Attempted to access secret key, which is not available for Ledger signer");
         Err(SignerError::SecretKeyIsNotAvailable)
     }
 
     #[instrument(skip(self))]
-    fn get_public_key(&self) -> Result<PublicKey, SignerError> {
+    fn get_public_key(&self) -> Result<PublicKey, PublicKeyError> {
         if let Some(public_key) = self.public_key.get() {
-            Ok(public_key.clone())
+            Ok(*public_key)
         } else {
             let public_key = near_ledger::get_wallet_id(self.hd_path.clone())
-                .map_err(|_| SignerError::PublicKeyIsNotAvailable)?;
+                .map_err(|_| PublicKeyError::PublicKeyIsNotAvailable)?;
             let public_key = PublicKey::ED25519(
                 near_api_types::crypto::public_key::ED25519PublicKey(*public_key.as_bytes()),
             );
-            self.public_key
-                .set(public_key.clone())
-                .map_err(LedgerError::from)?;
+            self.public_key.set(public_key)?;
             Ok(public_key)
         }
     }

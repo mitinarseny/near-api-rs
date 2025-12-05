@@ -2,6 +2,7 @@
 <p>
     <a href="https://docs.rs/near-api"><img src="https://docs.rs/near-api/badge.svg?style=flat-square" alt="Reference Documentation" /></a>
     <a href="https://crates.io/crates/near-api"><img src="https://img.shields.io/crates/v/near-api.svg?style=flat-square" alt="Crates.io version" /></a>
+    <a href="https://codecov.io/github/near/near-api-rs"><img src="https://codecov.io/github/near/near-api-rs/graph/badge.svg" alt="Code Coverage" /></a>
     <a href="https://crates.io/crates/near-api"><img src="https://img.shields.io/crates/d/near-api.svg?style=flat-square" alt="Download" /></a>
     <a href="https://near.chat"><img src="https://img.shields.io/discord/490367152054992913?style=flat-square&label=discord&color=lightgreen" alt="Join the community on Discord" /></a>
     <a href="https://t.me/NEAR_Tools_Community_Group"><img src="https://img.shields.io/badge/telegram-online-lightgreen?style=flat-square" alt="Join the community on Telegram" /></a>
@@ -26,12 +27,13 @@ The minimum required version is located in the [rust-version](./Cargo.toml#L4) f
 * `ledger`: Enables integration with a Ledger hardware signer for secure key management.
 * `keystore`: Enables integration with a system keystore signer for managing keys securely on the local system.
 
+
 ## Current issues
 
 The library is in good condition, but lacks a few points to be even better:
 - [x] documentation
 - [ ] good quality examples
-- [ ] integration tests for all API calls
+- [ ] integration tests for all API calls (in progress - targeting 60% coverage)
 - [x] CI
 - [x] anyhow -> thiserror
 - [x] ledger is blocking and it's not good in the async runtime

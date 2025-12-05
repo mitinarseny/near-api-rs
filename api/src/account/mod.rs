@@ -1,7 +1,7 @@
 use near_api_types::{
-    AccessKeyPermission, AccountId, Action, PublicKey, Reference,
     json::U64,
     transaction::actions::{AccessKey, AddKeyAction, DeleteAccountAction, DeleteKeyAction},
+    AccessKeyPermission, AccountId, Action, PublicKey, Reference,
 };
 
 use crate::advanced::{query_request::QueryRequest, query_rpc::SimpleQueryRpc};
@@ -33,6 +33,78 @@ mod create;
 pub struct Account(pub AccountId);
 
 impl Account {
+    /// Returns the underlying account ID for this account.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    ///
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let account = Account("alice.testnet".parse()?);
+    /// let account_id = account.account_id();
+    /// println!("Account ID: {}", account_id);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn account_id(&self) -> &AccountId {
+        &self.0
+    }
+
+    /// Converts this account to a Contract for contract-related operations.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let account = Account("contract.testnet".parse()?);
+    /// let contract = account.as_contract();
+    /// let result: String = contract.call_function("get_value", ()).read_only().fetch_from_testnet().await?.data;
+    /// println!("Contract value: {:?}", result);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn as_contract(&self) -> crate::contract::Contract {
+        crate::contract::Contract(self.0.clone())
+    }
+
+    /// Creates a Tokens wrapper for token-related operations on this account.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let account = Account("alice.testnet".parse()?);
+    /// let tokens = account.tokens();
+    /// let balance = tokens.near_balance().fetch_from_testnet().await?;
+    /// println!("NEAR balance: {}", balance.total);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn tokens(&self) -> crate::tokens::Tokens {
+        crate::tokens::Tokens::account(self.0.clone())
+    }
+
+    /// Creates a Delegation wrapper for staking-related operations on this account.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use near_api::*;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let account = Account("alice.testnet".parse()?);
+    /// let delegation = account.delegation();
+    /// let staked = delegation.view_staked_balance("pool.testnet".parse()?).fetch_from_testnet().await?;
+    /// println!("Staked balance: {:?}", staked);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn delegation(&self) -> crate::stake::Delegation {
+        crate::stake::Delegation(self.0.clone())
+    }
+
     /// Prepares a query to fetch the [Data](crate::Data)<[AccountView](near_api_types::AccountView)> with the account information for the given account ID.
     ///
     /// ## Example
@@ -121,7 +193,7 @@ impl Account {
     /// let pk = PublicKey::from_str("ed25519:H4sIAAAAAAAAA+2X0Q6CMBAAtVlJQgYAAAA=")?;
     /// let result = Account("alice.testnet".parse()?)
     ///     .add_key(AccessKeyPermission::FullAccess, pk)
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
@@ -152,7 +224,7 @@ impl Account {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Account("alice.testnet".parse()?)
     ///     .delete_key(PublicKey::from_str("ed25519:H4sIAAAAAAAAA+2X0Q6CMBAAtVlJQgYAAAA=")?)
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
@@ -176,7 +248,7 @@ impl Account {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Account("alice.testnet".parse()?)
     ///     .delete_keys(vec![PublicKey::from_str("ed25519:H4sIAAAAAAAAA+2X0Q6CMBAAtVlJQgYAAAA=")?])
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
@@ -206,7 +278,7 @@ impl Account {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let result = Account("alice.testnet".parse()?)
     ///     .delete_account_with_beneficiary("bob.testnet".parse()?)
-    ///     .with_signer(Signer::new(Signer::from_ledger())?)
+    ///     .with_signer(Signer::from_ledger()?)
     ///     .send_to_testnet()
     ///     .await?;
     /// # Ok(())
@@ -235,7 +307,7 @@ impl Account {
     /// let secret = near_api::signer::generate_secret_key()?;
     /// let result: reqwest::Response = Account::create_account("alice.testnet".parse()?)
     ///     .sponsor_by_faucet_service()
-    ///     .public_key(secret.public_key())?
+    ///     .with_public_key(secret.public_key())?
     ///     .send_to_testnet_faucet()
     ///     .await?;
     /// // You have to save the secret key somewhere safe
@@ -255,10 +327,10 @@ impl Account {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let secret = near_api::signer::generate_secret_key()?;
-    /// let bob_signer = Signer::new(Signer::from_seed_phrase("lucky barrel fall come bottom can rib join rough around subway cloth ", None)?)?;
+    /// let bob_signer = Signer::from_seed_phrase("lucky barrel fall come bottom can rib join rough around subway cloth ", None)?;
     /// let result = Account::create_account("alice.testnet".parse()?)
     ///     .fund_myself("bob.testnet".parse()?, NearToken::from_near(1))
-    ///     .public_key(secret.public_key())?
+    ///     .with_public_key(secret.public_key())
     ///     .with_signer(bob_signer)
     ///     .send_to_testnet()
     ///     .await?;
@@ -277,10 +349,10 @@ impl Account {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let secret = near_api::signer::generate_secret_key()?;
-    /// let bob_signer = Signer::new(Signer::from_seed_phrase("lucky barrel fall come bottom can rib join rough around subway cloth ", None)?)?;
+    /// let bob_signer = Signer::from_seed_phrase("lucky barrel fall come bottom can rib join rough around subway cloth ", None)?;
     /// let result = Account::create_account("sub.bob.testnet".parse()?)
     ///     .fund_myself("bob.testnet".parse()?, NearToken::from_near(1))
-    ///     .public_key(secret.public_key())?
+    ///     .with_public_key(secret.public_key())
     ///     .with_signer(bob_signer)
     ///     .send_to_testnet()
     ///     .await?;

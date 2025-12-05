@@ -1,16 +1,11 @@
 [package]
 name = "near-api"
-version = "0.7.1"
 rust-version = "1.85"
-authors = [
-    "akorchyn <artur.yurii.korchynskyi@gmail.com>",
-    "frol <frolvlad@gmail.com>",
-    "Near Inc <hello@nearprotocol.com>",
-]
-license = "MIT OR Apache-2.0"
-edition = "2024"
-resolver = "2"
-repository = "https://github.com/near/near-api-rs"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
 description = "Rust library to interact with NEAR Protocol via RPC API"
 
 exclude = ["resources", "tests"]
@@ -24,9 +19,6 @@ borsh.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 
-# Remove this after https://github.com/near/near-sandbox-rs/pull/14
-chrono = { version = "0.4", features = ["now"], default-features = false }
-
 reqwest = { workspace = true, features = ["blocking", "json"] }
 futures.workspace = true
 # Ad-hoc fix for compilation errors (rustls is used instead of openssl to ease the deployment avoiding the system dependency on openssl)
@@ -35,6 +27,7 @@ openssl = { workspace = true, features = ["vendored"] }
 bip39 = { workspace = true, features = ["rand"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+serde_dbgfmt.workspace = true
 slipped10.workspace = true
 url.workspace = true
 tokio = { workspace = true, default-features = false, features = ["time"] }
@@ -56,10 +49,11 @@ keyring = { workspace = true, features = [
 
 
 [features]
-default = ["keystore", "ledger"]
-ledger = ["near-ledger"]
+default = []
+ledger = ["near-ledger", "near-api-types/ledger"]
 keystore = ["dep:keyring"]
 
 [dev-dependencies]
 tokio = { workspace = true, default-features = false, features = ["full"] }
 near-sandbox = { workspace = true, features = ["generate"] }
+testresult.workspace = true

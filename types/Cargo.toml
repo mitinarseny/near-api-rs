@@ -1,16 +1,11 @@
 [package]
 name = "near-api-types"
-version = "0.7.1"
-authors = [
-    "akorchyn <artur.yurii.korchynskyi@gmail.com>",
-    "frol <frolvlad@gmail.com>",
-    "Near Inc <hello@nearprotocol.com>",
-]
-license = "MIT OR Apache-2.0"
-edition = "2024"
-resolver = "2"
-repository = "https://github.com/near/near-api-rs"
-description = "Rust library to interact with NEAR Protocol via RPC API"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Rust types library to interact with NEAR Protocol via RPC API"
 
 
 [dependencies]
@@ -21,6 +16,7 @@ bs58.workspace = true
 thiserror.workspace = true
 base64.workspace = true
 sha2.workspace = true
+serde_with.workspace = true
 
 near-openapi-types.workspace = true
 near-account-id.workspace = true
@@ -32,7 +28,16 @@ primitive-types.workspace = true
 ed25519-dalek.workspace = true
 secp256k1.workspace = true
 
+near-ledger = { workspace = true, optional = true }
+
 [dev-dependencies]
 bolero.workspace = true
 near-primitives.workspace = true
 near-crypto.workspace = true
+testresult.workspace = true
+
+[features]
+ledger = ["near-ledger"]
+
+[lints]
+workspace = true
